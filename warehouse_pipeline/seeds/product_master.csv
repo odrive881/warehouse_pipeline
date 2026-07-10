@@ -1,0 +1,21 @@
+sku,product_name,category,unit_cost,safety_stock_threshold,supplier_id
+SKU-0001,Hex Bolt M8x40,fasteners,0.85,500,SUP-001
+SKU-0002,Hex Bolt M10x50,fasteners,1.10,400,SUP-001
+SKU-0003,Wing Nut M8,fasteners,0.45,600,SUP-001
+SKU-0004,Steel Washer 8mm,fasteners,0.12,1000,SUP-001
+SKU-0005,L-Bracket Heavy Duty,brackets,3.20,150,SUP-002
+SKU-0006,L-Bracket Standard,brackets,2.40,200,SUP-002
+SKU-0007,Corner Bracket Reinforced,brackets,4.75,100,SUP-002
+SKU-0008,Shelf Bracket 200mm,brackets,5.60,80,SUP-002
+SKU-0009,Cable Tie 200mm Black,electrical,0.08,2000,SUP-003
+SKU-0010,Cable Tie 300mm Black,electrical,0.11,1500,SUP-003
+SKU-0011,Terminal Block 12-Way,electrical,6.90,120,SUP-003
+SKU-0012,Heat Shrink Tubing 5m,electrical,3.30,250,SUP-003
+SKU-0013,PVC Pipe Coupling 32mm,plumbing,1.95,300,SUP-004
+SKU-0014,PVC Pipe Coupling 50mm,plumbing,2.85,200,SUP-004
+SKU-0015,Ball Valve 1 inch,plumbing,8.40,90,SUP-004
+SKU-0016,Rubber Gasket Set,plumbing,1.20,350,SUP-004
+SKU-0017,Safety Goggles Clear,safety,4.50,180,SUP-005
+SKU-0018,Work Gloves Size L,safety,3.10,400,SUP-005
+SKU-0019,Hi-Vis Vest Orange,safety,7.25,150,SUP-005
+SKU-0020,Hard Hat White,safety,9.80,100,SUP-005

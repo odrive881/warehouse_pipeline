@@ -1,0 +1,110 @@
+version: 2
+
+models:
+
+  - name: mart_stock_level
+    description: >
+      Calculates the quantity of SKUs in stock, and their value
+
+    columns:
+
+      - name: sku
+        tests:
+          - not_null
+
+      - name: product_name
+        tests:
+          - not_null
+
+      - name: category
+        tests:
+          - not_null
+
+      - name: unit_cost
+        tests:
+          - not_null
+
+      - name: safety_stock_threshold
+        tests:
+          - not_null
+
+      - name: total_amount_in_stock
+        tests:
+          - not_null
+
+      - name: total_in_stock_value
+        tests:
+          - not_null
+
+
+
+  - name: mart_turnover
+    description: >
+      Calculates the turnover ratio per period.
+
+    columns:
+
+      - name: period
+        tests:
+          - not_null
+
+      - name: sku
+        tests:
+          - not_null
+
+      - name: product_name
+        tests:
+          - not_null
+
+      - name: category
+        tests:
+          - not_null
+
+      - name: warehouse_id
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['WH-POZNAN', 'WH-WARSZAWA']
+
+      - name: units_shipped
+        tests:
+          - not_null
+
+      - name: current_stock
+        tests:
+          - not_null
+
+      - name: turnover_ratio
+        tests:
+          - not_null
+
+
+  - name: mart_reorder_alerts
+    description: >
+      Displays any SKUs that have gone below their safety stock threshold.
+
+    columns:
+
+      - name: sku
+        tests:
+          - not_null
+
+      - name: product_name
+        tests:
+          - not_null
+
+      - name: category
+        tests:
+          - not_null
+
+      - name: unit_cost
+        tests:
+          - not_null
+
+      - name: safety_stock_threshold
+        tests:
+          - not_null
+
+      - name: units_below_threshold
+        tests:
+          - not_null

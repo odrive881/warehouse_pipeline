@@ -1,0 +1,15 @@
+# profiles.yml.example
+# Do not change any values in this file. Set all credentials through the .env file, from where this file draws data from.
+
+warehouse_pipeline:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('DB_HOST') }}"
+      port: "{{ env_var('DB_PORT') | as_number }}"
+      user: "{{ env_var('DB_USER') }}"
+      password: "{{ env_var('DB_PASSWORD') }}"
+      dbname: "{{ env_var('DB_NAME') }}"
+      schema: dbt_dev
+      threads: 1

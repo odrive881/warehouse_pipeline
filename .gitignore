@@ -1,0 +1,35 @@
+# ── Secrets ────────────────────────────────────────────────────────────────────
+.env
+profiles.yml
+*.pem
+*.key
+
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+dbt_env/
+.venv/
+venv/
+
+# ── dbt generated artifacts ───────────────────────────────────────────────────
+target/
+dbt_packages/
+logs/
+
+# ── Airflow generated files ───────────────────────────────────────────────────
+airflow-warehouse-pipeline/logs/
+airflow-warehouse-pipeline/plugins/
+*.pid
+
+# ── Data files ────────────────────────────────────────────────────────────────
+warehouse_pipeline/data/*.csv
+!warehouse_pipeline/data/.gitkeep
+
+# ── OS / editor noise ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

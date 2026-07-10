@@ -1,0 +1,62 @@
+version: 2
+ 
+sources:
+  - name: warehouse_db
+    schema: raw
+    tables:
+      - name: movements
+        description: "Raw product movement .csv file, ingested into the staging table"
+ 
+models:
+  - name: stg_inventory_movements
+    description: >
+      Parsed and validated product movement table. Checked for correct event types,
+      positive and reasonable values in quantity, valid timestamp formatting and a lack
+      of duplicate event ids. Also checked against the product_master seed, ensuring no
+      untracked SKU has made its way into the table.
+ 
+    columns:
+ 
+      - name: event_id
+        description: "Unique identifier per each entry"
+        tests:
+          - not_null
+          - unique
+ 
+      - name: sku
+        description: "Product label that links to a real product being moved"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('product_master')
+              field: sku
+ 
+      - name: warehouse_id
+        description: "Identifier for the relevant warehouse where the event has taken place"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['WH-POZNAN', 'WH-WARSZAWA']
+ 
+      - name: event_type
+        description: "Category of movement taking place"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['receipt', 'return', 'pick', 'shipment', 'damage']
+ 
+      - name: quantity
+        description: >
+          Product quantity being moved. Always positive in the source data —
+          direction is encoded by event_type, not by sign. Checked for
+          positivity and plausibility via singular tests
+          (assert_quantity_positive, assert_no_implausible_quantities).
+        tests:
+          - not_null
+ 
+      - name: event_timestamp
+        description: >
+          Time the movement occurred. Checked against a plausible date range
+          via the singular test assert_no_implausible_timestamps.
+        tests:
+          - not_null
