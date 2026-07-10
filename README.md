@@ -15,14 +15,14 @@ master data.
 ## What this project does
 
 - Generates synthetic warehouse movement event data via a CSV generator
-  script that correctly maintains data continuity across runs —
+  script that correctly maintains data continuity across runs -
   event IDs and timestamps never overlap between batches
 - Loads event batches into PostgreSQL via Python using PostgreSQL's
   native COPY protocol for bulk-load performance, with full data
   continuity validation before insertion
 - Cleans, types, and reconstructs running inventory balances in a dbt
   staging layer using window functions
-- Materializes the staging model incrementally — only new events are
+- Materializes the staging model incrementally - only new events are
   processed on each run, not the full history
 - Produces three reporting marts: current stock levels, inventory
   turnover by period, and reorder alerts for SKUs below safety stock
@@ -61,7 +61,7 @@ mart_stock_levels  mart_turnover  mart_reorder_alerts
 ```
 
 Orchestrated by a four-task Airflow DAG:
-`ensure_raw_schema` → `run_loader` → `run_dbt_seed` → `run_dbt_build`
+`ensure_raw_schema` -> `run_loader` -> `run_dbt_seed` -> `run_dbt_build`
 
 ## New concepts vs the accounting pipeline
 
@@ -72,7 +72,6 @@ Orchestrated by a four-task Airflow DAG:
 | dbt materialization | `view` / `table` | `incremental` |
 | Reference data changes | Static chart of accounts | Product master (SCD-aware) |
 | Bulk loading | pandas `to_sql` | psycopg2 `copy_expert` |
-| Uniqueness constraint | Document number | Event ID across batches |
 
 ## Stack
 
@@ -91,10 +90,11 @@ warehouse-pipeline/
 │
 ├── warehouse_pipeline/              # dbt project root
 │   ├── dbt_project.yml
-│   ├── profiles.yml.example         # copy to profiles.yml, fill in values
+│   ├── profiles.yml.example         # copy to profiles.yml, values copied over from .env
 │   ├── data/
 │   │   ├── .gitkeep
-│   │   └── movements_batch.csv      # gitignored — generate locally
+│   │   ├── movements_large.csv      # gitignored - generate locally
+│   │   └── csv_generator_script.py  # generates randomized .csv ingestion data
 │   ├── seeds/
 │   │   └── product_master.csv       # 20-SKU reference data, committed
 │   ├── models/
@@ -107,9 +107,8 @@ warehouse-pipeline/
 │   │       ├── mart_reorder_alerts.sql
 │   │       └── marts.yml
 │   ├── tests/
-│   │   ├── assert_no_negative_inventory.sql
-│   │   ├── assert_quantity_positive.sql
-│   │   └── assert_no_implausible_quantities.sql
+│   │   ├── assert_positive_quantity.sql
+│   │   └── assert_no_implausible_quantity.sql
 │   └── loader.py
 │
 ├── airflow-warehouse-pipeline/      # Docker / Airflow setup
@@ -119,7 +118,6 @@ warehouse-pipeline/
 │   └── dags/
 │       └── warehouse_pipeline_dag.py
 │
-├── generate_movements.py            # synthetic data generator
 ├── .gitignore
 ├── LICENSE
 └── README.md
@@ -130,7 +128,7 @@ warehouse-pipeline/
 ### Prerequisites
 
 - Docker Desktop (4GB+ memory allocated)
-- Python 3.10+ (for running the CSV generator locally)
+- Python 3.12 (required, will not run otherwise)
 - Power BI Desktop (optional, for viewing reports)
 
 ### 1. Clone the repository
@@ -148,16 +146,16 @@ cp airflow-warehouse-pipeline/.env.example airflow-warehouse-pipeline/.env
 ```
 
 Edit both files and replace placeholder values with real credentials.
-The values in `.env` and `profiles.yml` must match exactly — same
-username, password, database name, and host.
+The values in `.env` are automatically copied over to `profiles.yml`,
+leave the values in `profiles.yml` unchanged.
 
 ### 3. Generate the initial movement data
 
 ```bash
-python generate_movements.py
+python warehouse_pipeline/data/generate_movements.py
 ```
 
-This creates `warehouse_pipeline/data/movements_batch.csv` — the initial
+This creates `warehouse_pipeline/data/movements_batch.csv` - the initial
 full dataset. On subsequent runs it generates a new batch file containing
 only new events, with non-overlapping event IDs and timestamps, ready to
 be appended by the loader.
@@ -182,16 +180,16 @@ Default credentials: username `airflow`, password `airflow`.
 ### 6. Trigger the pipeline
 
 Unpause the `warehouse_pipeline` DAG and click the play button to trigger
-a manual run. The DAG is set to `schedule=None` — it only runs when
+a manual run. The DAG is set to `schedule=None` - it only runs when
 manually triggered, matching the real-world cadence of "place a new batch
 file, then trigger the pipeline."
 
 Watch the four tasks complete in order:
-`ensure_raw_schema` → `run_loader` → `run_dbt_seed` → `run_dbt_build`
+`ensure_raw_schema` -> `run_loader` -> `run_dbt_seed` -> `run_dbt_build`
 
 ### 7. Connect Power BI (optional)
 
-In Power BI Desktop, connect via Get Data → PostgreSQL:
+In Power BI Desktop, connect via Get Data -> PostgreSQL:
 
 ```
 Server:   localhost:5433
@@ -209,7 +207,7 @@ python generate_movements.py   # generates new batch with fresh event IDs
                                # and timestamps after existing data
 ```
 
-Then trigger the DAG again — the loader validates continuity and appends
+Then trigger the DAG again - the loader validates continuity and appends
 only the new rows, the incremental dbt model processes only the new
 events, and marts update automatically.
 
@@ -225,19 +223,16 @@ A common source of confusion when working with containerized Postgres:
 
 Anything inside the Docker network uses the service name and internal
 port. Anything on your Windows host uses `localhost` and the mapped port.
-Never use `warehouse-db` as a hostname in pgAdmin — it is not resolvable
+Never use `warehouse-db` as a hostname in pgAdmin - it is not resolvable
 outside the Docker network.
 
 ## Data model notes
 
 - Movement events are append-only. The source table `raw.movements` is
-  never truncated between runs — only new rows are added.
+  never truncated between runs - only new rows are added.
 - Running inventory balance is reconstructed from the event log using
   `SUM() OVER (PARTITION BY sku ORDER BY event_timestamp)`. This is the
   core modeling pattern of the project.
-- The incremental staging model uses event ID-based deduplication rather
-  than timestamp-based filtering, avoiding the boundary-row duplicate
-  issue common with timestamp-only incremental strategies.
 - `mart_reorder_alerts` is built on top of `mart_stock_levels` rather
   than directly on staging, demonstrating mart-on-mart composition.
 
@@ -246,12 +241,11 @@ outside the Docker network.
 This repository does not include real operational data. All movement
 events are synthetically generated by `generate_movements.py`. The
 product master (`seeds/product_master.csv`) is a hand-authored reference
-file containing 20 fictional SKUs across five categories, and is safe
-to commit since it contains no real business data.
+file containing 20 fictional SKUs across five categories.
 
 ## Status
 
-Personal learning project — built to practice incremental dbt models,
+Personal learning project - built to practice incremental dbt models,
 window-function-based state reconstruction, and bulk-loading patterns,
 applied to a warehouse/inventory domain. Second project in a portfolio
 that also includes an accounting ledger pipeline built on the same
