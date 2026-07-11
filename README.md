@@ -26,8 +26,6 @@ master data.
   processed on each run, not the full history
 - Produces three reporting marts: current stock levels, inventory
   turnover by period, and reorder alerts for SKUs below safety stock
-- Validates data integrity with dbt tests including a custom
-  no-negative-inventory assertion
 - Runs on a schedule via Airflow, fully containerized with Docker Compose
 
 ## Architecture
