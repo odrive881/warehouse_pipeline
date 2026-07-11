@@ -152,10 +152,11 @@ leave the values in `profiles.yml` unchanged.
 ### 3. Generate the initial movement data
 
 ```bash
-python warehouse_pipeline/data/generate_movements.py
+cd warehouse_pipeline/data
+python csv_generator_script.py
 ```
 
-This creates `warehouse_pipeline/data/movements_batch.csv` - the initial
+This creates `warehouse_pipeline/data/movements_large.csv` - the initial
 full dataset. On subsequent runs it generates a new batch file containing
 only new events, with non-overlapping event IDs and timestamps, ready to
 be appended by the loader.
@@ -163,6 +164,8 @@ be appended by the loader.
 ### 4. Build and start the Docker stack
 
 ```bash
+cd..
+cd..
 cd airflow-warehouse-pipeline
 docker compose up airflow-init
 docker compose up -d
@@ -203,8 +206,8 @@ Select tables from the `dbt_dev` schema. Use Import mode.
 To simulate ongoing warehouse activity:
 
 ```bash
-python generate_movements.py   # generates new batch with fresh event IDs
-                               # and timestamps after existing data
+cd warehouse_pipeline/data	# generates new batch with fresh event IDs
+python csv_generator_script.py  # and timestamps after existing data
 ```
 
 Then trigger the DAG again - the loader validates continuity and appends
@@ -213,7 +216,7 @@ events, and marts update automatically.
 
 ## Connection reference
 
-A common source of confusion when working with containerized Postgres:
+A common source of confusion that I experienced when working with containerized Postgres:
 
 | Connecting from | Host | Port |
 |---|---|---|
@@ -223,8 +226,6 @@ A common source of confusion when working with containerized Postgres:
 
 Anything inside the Docker network uses the service name and internal
 port. Anything on your Windows host uses `localhost` and the mapped port.
-Never use `warehouse-db` as a hostname in pgAdmin - it is not resolvable
-outside the Docker network.
 
 ## Data model notes
 
