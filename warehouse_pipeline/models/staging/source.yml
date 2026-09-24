@@ -11,7 +11,7 @@ models:
   - name: stg_inventory_movements
     description: >
       Parsed and validated product movement table. Checked for correct event types,
-      positive and reasonable values in quantity, valid timestamp formatting and a lack
+      positive and reasonable values in quantity, a non-null timestamp and a lack
       of duplicate event ids. Also checked against the product_master seed, ensuring no
       untracked SKU has made its way into the table.
  
@@ -50,13 +50,12 @@ models:
           Product quantity being moved. Always positive in the source data —
           direction is encoded by event_type, not by sign. Checked for
           positivity and plausibility via singular tests
-          (assert_quantity_positive, assert_no_implausible_quantities).
+          (assert_positive_quantity, assert_no_implausible_quantity).
         tests:
           - not_null
  
       - name: event_timestamp
         description: >
-          Time the movement occurred. Checked against a plausible date range
-          via the singular test assert_no_implausible_timestamps.
+          Time the movement occurred. Must be present (not_null).
         tests:
           - not_null

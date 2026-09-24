@@ -1,0 +1,69 @@
+{
+  "load": {
+    "rows": 500000,
+    "results": [
+      {
+        "name": "COPY (copy_expert)",
+        "runs": 3,
+        "median_s": 1.695,
+        "min_s": 1.638,
+        "max_s": 1.789,
+        "rows_per_s": 295060,
+        "speedup_vs_baseline": 7.7,
+        "baseline": "to_sql default (executemany)"
+      },
+      {
+        "name": "to_sql multi, chunk=10k",
+        "runs": 3,
+        "median_s": 42.059,
+        "min_s": 41.852,
+        "max_s": 42.291,
+        "rows_per_s": 11888,
+        "speedup_vs_baseline": 0.3,
+        "baseline": "to_sql default (executemany)"
+      },
+      {
+        "name": "to_sql default (executemany)",
+        "runs": 3,
+        "median_s": 13.047,
+        "min_s": 13.026,
+        "max_s": 13.057,
+        "rows_per_s": 38324,
+        "speedup_vs_baseline": 1.0,
+        "baseline": "to_sql default (executemany)"
+      }
+    ]
+  },
+  "dbt": {
+    "rows": 50000,
+    "results": [
+      {
+        "name": "incremental, wall (+50,000)",
+        "median_s": 5.369,
+        "min_s": 5.369,
+        "max_s": 5.369,
+        "full_refresh_vs_incremental_x": 1.1,
+        "running_balance_mismatches": 0
+      },
+      {
+        "name": "full-refresh, wall (550,000)",
+        "median_s": 6.142,
+        "min_s": 6.142,
+        "max_s": 6.142
+      },
+      {
+        "name": "incremental, model SQL (+50,000)",
+        "median_s": 0.92,
+        "min_s": 0.92,
+        "max_s": 0.92,
+        "full_refresh_vs_incremental_x": 2.1
+      },
+      {
+        "name": "full-refresh, model SQL (550,000)",
+        "median_s": 1.895,
+        "min_s": 1.895,
+        "max_s": 1.895
+      }
+    ]
+  }
+}

@@ -26,7 +26,7 @@ master data.
   processed on each run, not the full history
 - Produces three reporting marts: current stock levels, inventory
   turnover by period, and reorder alerts for SKUs below safety stock
-- Runs on a schedule via Airflow, fully containerized with Docker Compose
+- Orchestrated on demand via Airflow (manual trigger), fully containerized with Docker Compose
 
 ## Architecture
 
@@ -52,14 +52,14 @@ dbt_dev.stg_inventory_movements
         │
     ┌───┴───────────────┐──────────────────┐
     ▼                   ▼                  ▼
-mart_stock_levels  mart_turnover  mart_reorder_alerts
+mart_stock_level  mart_turnover  mart_reorder_alerts
         │
         ▼
   Power BI / pgAdmin
 ```
 
 Orchestrated by a four-task Airflow DAG:
-`ensure_raw_schema` -> `run_loader` -> `run_dbt_seed` -> `run_dbt_build`
+`ensure_raw_schema` -> `load_raw` -> `seed` -> `build`
 
 ## New concepts vs the accounting pipeline
 
@@ -100,7 +100,7 @@ warehouse-pipeline/
 │   │   │   ├── stg_inventory_movements.sql
 │   │   │   └── source.yml
 │   │   └── marts/
-│   │       ├── mart_stock_levels.sql
+│   │       ├── mart_stock_level.sql
 │   │       ├── mart_turnover.sql
 │   │       ├── mart_reorder_alerts.sql
 │   │       └── marts.yml
@@ -126,7 +126,8 @@ warehouse-pipeline/
 ### Prerequisites
 
 - Docker Desktop (4GB+ memory allocated)
-- Python 3.12 (required, will not run otherwise)
+- Python 3.12 (required, will not run otherwise), used through a virtual
+  environment (step 2)
 - Power BI Desktop (optional, for viewing reports)
 
 ### 1. Clone the repository
@@ -136,7 +137,41 @@ git clone https://github.com/yourusername/warehouse-pipeline.git
 cd warehouse-pipeline
 ```
 
-### 2. Copy and fill in config files
+### 2. Create a Python 3.12 virtual environment
+
+The generator, loader and benchmark scripts run on your machine, so they
+need their dependencies installed locally. Use a virtual environment so
+they don't mix with other Python installs on your system.
+
+Windows (PowerShell):
+
+```powershell
+cd warehouse_pipeline
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+python -m pip install -r requirements.txt
+cd ..
+```
+
+macOS / Linux:
+
+```bash
+cd warehouse_pipeline
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+cd ..
+```
+
+Keep the environment activated (your prompt shows `(.venv)`) for every
+`python` command in the steps below. Use `python -m pip` rather than bare
+`pip`, so packages go into the venv and not into another Python on your
+PATH. If you get `No module named pip`, run `py -3.12 -m ensurepip --upgrade`
+(or `python3.12 -m ensurepip --upgrade`) and try again.
+
+Airflow is not installed here. It runs inside Docker (step 5).
+
+### 3. Copy and fill in config files
 
 ```bash
 cp warehouse_pipeline/profiles.yml.example warehouse_pipeline/profiles.yml
@@ -147,7 +182,7 @@ Edit both files and replace placeholder values with real credentials.
 The values in `.env` are automatically copied over to `profiles.yml`,
 leave the values in `profiles.yml` unchanged.
 
-### 3. Generate the initial movement data
+### 4. Generate the initial movement data
 
 ```bash
 cd warehouse_pipeline/data
@@ -159,7 +194,7 @@ full dataset. On subsequent runs it generates a new batch file containing
 only new events, with non-overlapping event IDs and timestamps, ready to
 be appended by the loader.
 
-### 4. Build and start the Docker stack
+### 5. Build and start the Docker stack
 
 ```bash
 cd..
@@ -173,12 +208,12 @@ docker compose ps
 All containers should report healthy. This typically takes 60-90 seconds
 on first start.
 
-### 5. Open the Airflow UI
+### 6. Open the Airflow UI
 
 Navigate to `http://localhost:8080` in your browser.
 Default credentials: username `airflow`, password `airflow`.
 
-### 6. Trigger the pipeline
+### 7. Trigger the pipeline
 
 Unpause the `warehouse_pipeline` DAG and click the play button to trigger
 a manual run. The DAG is set to `schedule=None` - it only runs when
@@ -186,9 +221,9 @@ manually triggered, matching the real-world cadence of "place a new batch
 file, then trigger the pipeline."
 
 Watch the four tasks complete in order:
-`ensure_raw_schema` -> `run_loader` -> `run_dbt_seed` -> `run_dbt_build`
+`ensure_raw_schema` -> `load_raw` -> `seed` -> `build`
 
-### 7. Connect Power BI (optional)
+### 8. Connect Power BI (optional)
 
 In Power BI Desktop, connect via Get Data -> PostgreSQL:
 
@@ -201,7 +236,8 @@ Select tables from the `dbt_dev` schema. Use Import mode.
 
 ## Running subsequent batches
 
-To simulate ongoing warehouse activity:
+To simulate ongoing warehouse activity, with the virtual environment from
+step 2 activated:
 
 ```bash
 cd warehouse_pipeline/data	# generates new batch with fresh event IDs
@@ -232,13 +268,13 @@ port. Anything on your Windows host uses `localhost` and the mapped port.
 - Running inventory balance is reconstructed from the event log using
   `SUM() OVER (PARTITION BY sku ORDER BY event_timestamp)`. This is the
   core modeling pattern of the project.
-- `mart_reorder_alerts` is built on top of `mart_stock_levels` rather
+- `mart_reorder_alerts` is built on top of `mart_stock_level` rather
   than directly on staging, demonstrating mart-on-mart composition.
 
 ## Sample data
 
 This repository does not include real operational data. All movement
-events are synthetically generated by `generate_movements.py`. The
+events are synthetically generated by `csv_generator_script.py`. The
 product master (`seeds/product_master.csv`) is a hand-authored reference
 file containing 20 fictional SKUs across five categories.
 

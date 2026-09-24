@@ -1,0 +1,16 @@
+# Python 3.12
+
+# Ingestion (loader.py, data/csv_generator_script.py, benchmark.py)
+pandas
+numpy
+SQLAlchemy
+psycopg2-binary
+python-dotenv
+
+# Transformation (dbt project)
+dbt-core
+dbt-postgres
+
+# Orchestration: Apache Airflow is not listed here. It ships in the
+# apache/airflow:3.1.2 Docker image (see airflow-warehouse-pipeline/Dockerfile),
+# which also installs dbt-core and dbt-postgres.
