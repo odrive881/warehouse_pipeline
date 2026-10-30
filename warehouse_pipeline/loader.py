@@ -1,12 +1,10 @@
 import os
 import pandas as pd
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import inspect
 import io
 
-old_file_path = "/opt/airflow/warehouse_pipeline/data/movements_large.csv"
-output_path = "/opt/airflow/warehouse_pipeline/data/movements_large.csv"
+csv_path = "/opt/airflow/warehouse_pipeline/data/movements_large.csv"
 
 
 def get_engine():
@@ -21,16 +19,13 @@ def ensure_raw_schema():
     try:
         with engine.begin() as conn:
             conn.execute(text("CREATE SCHEMA IF NOT EXISTS raw"))
-    except ProgrammingError as e:
-        if "already exists" in str(e):
-            raise
     finally:
         engine.dispose()
 
 
 def copy_to_sql(dataframe, cursor_connection, raw_connection):
     """
-    The equivalent of the \copy functionality from before containerization.
+    The equivalent of the \\copy functionality from before containerization.
     Faster than regular chunked insertion.
     """
 
@@ -47,57 +42,71 @@ def copy_to_sql(dataframe, cursor_connection, raw_connection):
     print(f"Loaded {len(dataframe)} rows to raw.movements")
 
 
-def run_loader(engine_func=get_engine):
-    """
-    Validates dtypes, Sets up table and schema, checks if the table exists and makes sure the new piece
-    of data has larger ids, and more advanced dates to allow for seamless chronological continuity without
-    duplicate data
-    """
-
-    engine = engine_func()
-
-    #Dtype validation
-    df = pd.read_csv(output_path, dtype=str, encoding="utf-8")
+def read_batch(path):
+    """Reads the batch CSV and casts the columns the continuity check relies on"""
+    df = pd.read_csv(path, dtype=str, encoding="utf-8")
     df["event_id"] = df["event_id"].astype(int)
     df["quantity"] = df["quantity"].astype(int)
     df["event_timestamp"] = pd.to_datetime(df["event_timestamp"])
-
-    #Does the table exist?
-    inspector = inspect(engine)
-    table_exists = inspector.has_table("movements", schema='raw')
-
-    if not table_exists:
-        df.head(0).to_sql(name='movements', con=engine, schema='raw', if_exists='replace', index=False)
+    return df
 
 
-    raw_conn = engine.raw_connection()
-    cursor = raw_conn.cursor()
+def get_last_loaded(engine):
+    """Returns the highest event_id and latest event_timestamp in raw.movements, (None, None) if it is empty"""
+    with engine.connect() as conn:
+        last_id, last_timestamp = conn.execute(
+            text("SELECT MAX(event_id), MAX(event_timestamp) FROM raw.movements")
+        ).one()
+    if last_id is None:
+        return None, None
+    return int(last_id), pd.Timestamp(last_timestamp)
 
-    #Checking the chronological continuity (event_id, timestamp)
+
+def validate_continuity(df, last_id, last_timestamp):
+    """
+    Raises ValueError unless every event in the batch comes strictly after what is already loaded:
+    the smallest new event_id must exceed the largest loaded one, and the earliest new timestamp
+    must be later than the latest loaded one. An empty table (last_id is None) accepts any batch.
+    """
+    if last_id is None:
+        return
+
+    first_new_id = df["event_id"].min()
+    first_new_timestamp = df["event_timestamp"].min()
+
+    if first_new_id <= last_id:
+        raise ValueError(
+            f"Batch starts at event_id {first_new_id}, but raw.movements already holds ids up to {last_id}. "
+            "Cannot upload the same file twice, create a new file with larger ids")
+    if first_new_timestamp <= last_timestamp:
+        raise ValueError(
+            f"Batch starts at {first_new_timestamp}, but raw.movements already holds events up to {last_timestamp}. "
+            "Create a new file with newer timestamps")
+
+
+def run_loader(engine_func=get_engine, path=csv_path):
+    """
+    Validates dtypes, sets up the table if needed, and makes sure the new batch has larger ids
+    and later timestamps than anything already loaded, so batches stay chronologically continuous
+    without duplicate data
+    """
+
+    engine = engine_func()
     try:
-        if table_exists:
-            # New check if the same file is being transferred to sql twice
-            test_df = pd.read_csv(old_file_path, usecols=["event_timestamp"])
-            new_timestamp = pd.to_datetime(test_df.iloc[1, 0].split(" ")[0])
+        df = read_batch(path)
 
-            with engine.begin() as conn:
-                existing_rows = pd.read_sql(text("SELECT COUNT(*) FROM raw.movements"), conn)
-                if existing_rows.iloc[0, 0] == 0:
-                    copy_to_sql(df, cursor, raw_conn)
-                else:
-                    old_timestamp = pd.read_sql(text("SELECT event_timestamp FROM raw.movements "
-                                                     "ORDER BY event_timestamp DESC "
-                                                     "LIMIT 1"), conn)
-
-                    old_timestamp_formatted = pd.to_datetime(old_timestamp.iloc[0, 0].strftime("%Y-%m-%d"))
-
-                    if old_timestamp_formatted < new_timestamp:
-                        copy_to_sql(df, cursor, raw_conn)
-                    else:
-                        raise ValueError(
-                            "Cannot upload the same file twice, create a new file with newer timestamps and larger ids")
+        if inspect(engine).has_table("movements", schema='raw'):
+            last_id, last_timestamp = get_last_loaded(engine)
         else:
-            copy_to_sql(df, cursor, raw_conn)
+            df.head(0).to_sql(name='movements', con=engine, schema='raw', if_exists='replace', index=False)
+            last_id, last_timestamp = None, None
+
+        validate_continuity(df, last_id, last_timestamp)
+
+        raw_conn = engine.raw_connection()
+        try:
+            copy_to_sql(df, raw_conn.cursor(), raw_conn)
+        finally:
+            raw_conn.close()
     finally:
-        raw_conn.close()
         engine.dispose()

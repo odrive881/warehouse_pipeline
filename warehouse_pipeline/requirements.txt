@@ -7,6 +7,9 @@ SQLAlchemy
 psycopg2-binary
 python-dotenv
 
+# Testing (python_tests/)
+pytest
+
 # Transformation (dbt project)
 dbt-core
 dbt-postgres

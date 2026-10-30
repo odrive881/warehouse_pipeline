@@ -107,6 +107,9 @@ warehouse-pipeline/
 │   ├── tests/
 │   │   ├── assert_positive_quantity.sql
 │   │   └── assert_no_implausible_quantity.sql
+│   ├── python_tests/
+│   │   └── test_loader.py           # pytest suite for loader.py
+│   ├── pytest.ini
 │   └── loader.py
 │
 ├── airflow-warehouse-pipeline/      # Docker / Airflow setup
@@ -246,7 +249,20 @@ python csv_generator_script.py  # and timestamps after existing data
 
 Then trigger the DAG again - the loader validates continuity and appends
 only the new rows, the incremental dbt model processes only the new
-events, and marts update automatically.
+events, and marts update automatically. A batch is accepted only if its
+smallest `event_id` is above the largest loaded one and its earliest
+`event_timestamp` is later than the latest loaded one; otherwise the
+`load_raw` task fails with a `ValueError`.
+
+## Running the Python tests
+
+The loader's continuity logic is covered by pytest. The tests use a
+temporary SQLite database, so no Postgres or Docker is needed:
+
+```bash
+cd warehouse_pipeline
+pytest
+```
 
 ## Connection reference
 
