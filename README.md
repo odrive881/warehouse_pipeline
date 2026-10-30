@@ -106,7 +106,8 @@ warehouse-pipeline/
 │   │       └── marts.yml
 │   ├── tests/
 │   │   ├── assert_positive_quantity.sql
-│   │   └── assert_no_implausible_quantity.sql
+│   │   ├── assert_no_implausible_quantity.sql
+│   │   └── assert_running_balance_matches_total.sql
 │   ├── python_tests/
 │   │   └── test_loader.py           # pytest suite for loader.py
 │   ├── pytest.ini
@@ -184,6 +185,10 @@ cp airflow-warehouse-pipeline/.env.example airflow-warehouse-pipeline/.env
 Edit both files and replace placeholder values with real credentials.
 The values in `.env` are automatically copied over to `profiles.yml`,
 leave the values in `profiles.yml` unchanged.
+
+`.env` also has two optional path settings, `WAREHOUSE_PIPELINE_DIR` and
+`MOVEMENTS_CSV_PATH`. Their defaults match the Docker volume mounts, so
+change them only if you mount the project somewhere else.
 
 ### 4. Generate the initial movement data
 
@@ -281,9 +286,23 @@ port. Anything on your Windows host uses `localhost` and the mapped port.
 
 - Movement events are append-only. The source table `raw.movements` is
   never truncated between runs - only new rows are added.
+- `raw.movements` is created by the `ensure_raw_schema` task with explicit
+  column types and `event_id` as the primary key, so a duplicate event is
+  rejected by the database even if it got past the loader's checks.
+  A table created by an older version of the loader can be upgraded once with
+  `ALTER TABLE raw.movements ADD PRIMARY KEY (event_id);`.
 - Running inventory balance is reconstructed from the event log using
-  `SUM() OVER (PARTITION BY sku ORDER BY event_timestamp)`. This is the
-  core modeling pattern of the project.
+  `SUM() OVER (PARTITION BY warehouse_id, sku ORDER BY event_timestamp, event_id)`.
+  This is the core modeling pattern of the project. Stock is tracked per
+  warehouse, because a unit in Poznań can't be picked in Warszawa.
+- The staging model picks up new events with `event_id > MAX(event_id)`,
+  so an event sharing the last loaded timestamp is never skipped. The
+  loader guarantees ids and timestamps both advance between batches.
+- `mart_stock_level` reads each warehouse/SKU's latest `running_balance`
+  instead of re-summing the full history. The singular test
+  `assert_running_balance_matches_total` checks the two always agree.
+- Reorder alerts are raised per warehouse: `safety_stock_threshold`
+  from `product_master` applies to each warehouse's own stock.
 - `mart_reorder_alerts` is built on top of `mart_stock_level` rather
   than directly on staging, demonstrating mart-on-mart composition.
 

@@ -1,4 +1,5 @@
 import csv
+import logging
 import random
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -12,7 +13,10 @@ def base_data_for_csv():
      "EVENT_TYPES_OUT": ["pick", "shipment", "damage"]}
 
 
-old_file_path = "movements_large.csv"
+# Resolved next to this script, so the generator finds the previous batch from any working directory
+csv_path = Path(__file__).resolve().parent / "movements_large.csv"
+
+logger = logging.getLogger(__name__)
 
 def event_id_continuity(existing_csv_path):
     """
@@ -23,7 +27,7 @@ def event_id_continuity(existing_csv_path):
         with open(existing_csv_path, encoding='utf-8') as f:
             reader = csv.DictReader(f)
             max_existing_id = max(int(row['event_id']) for row in reader)
-            print(f"Max existing id: {max_existing_id}")
+            logger.info("Max existing id: %d", max_existing_id)
         return max_existing_id
     else:
         return 0
@@ -42,8 +46,9 @@ def timestamp_continuity(existing_csv_path):
 
 def start_date(timestamp_function=timestamp_continuity):
     """Converts the str output from timestamp contituity to datetime object"""
-    parsed_date = timestamp_function(existing_csv_path=old_file_path).split(" ")[0].split("-")
-    print(f"Most recent timestamp found in old file: {timestamp_function(existing_csv_path=old_file_path)}")
+    latest_timestamp = timestamp_function(existing_csv_path=csv_path)
+    parsed_date = latest_timestamp.split(" ")[0].split("-")
+    logger.info("Most recent timestamp found in old file: %s", latest_timestamp)
     return datetime(int(parsed_date[0]), int(parsed_date[1]), int(parsed_date[2])) + timedelta(days=1)
 
 
@@ -56,14 +61,14 @@ def generate_movements(num_events, days_span, output_path, starting_event_id, st
     rows = []
 
     def event_id_assignment_logic():
-        if Path("movements_large.csv").exists():
+        if Path(output_path).exists():
             return starting_event_id + 1
         else:
             return starting_event_id
 
     event_id = event_id_assignment_logic()
 
-    print(f"Event id: {event_id}")
+    logger.info("Event id: %d", event_id)
 
     current_stock = {sku: random.randint(50, 200) for sku in base_data_for_csv()["SKUS"]}
 
@@ -104,15 +109,16 @@ def generate_movements(num_events, days_span, output_path, starting_event_id, st
         writer.writeheader()
         writer.writerows(rows)
 
-    print(f"Wrote {len(rows)} events spanning {days_span} days to {output_path}")
+    logger.info("Wrote %d events spanning %d days to %s", len(rows), days_span, output_path)
 
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     generate_movements(
         num_events=500_000,
         days_span=180,
-        output_path="movements_large.csv",
-        starting_event_id=event_id_continuity(old_file_path),
+        output_path=csv_path,
+        starting_event_id=event_id_continuity(csv_path),
         start_timestamp = start_date()
     )

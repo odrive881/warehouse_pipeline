@@ -1,5 +1,9 @@
+import os
 import sys
-sys.path.append('/opt/airflow/warehouse_pipeline')
+
+# Where the dbt project and loader.py are mounted inside the Airflow containers
+PIPELINE_DIR = os.environ.get('WAREHOUSE_PIPELINE_DIR', '/opt/airflow/warehouse_pipeline')
+sys.path.append(PIPELINE_DIR)
 
 from loader import ensure_raw_schema, run_loader
 
@@ -27,16 +31,12 @@ with DAG(
 
     seed = BashOperator(
         task_id='seed',
-        bash_command=("cd /opt/airflow/warehouse_pipeline && "
-                      "dbt seed --profiles-dir /opt/airflow/warehouse_pipeline"
-        ),
+        bash_command=f"cd {PIPELINE_DIR} && dbt seed --profiles-dir {PIPELINE_DIR}",
     )
 
     build = BashOperator(
         task_id='build',
-        bash_command=("cd /opt/airflow/warehouse_pipeline && "
-                      "dbt build --profiles-dir /opt/airflow/warehouse_pipeline"
-        ),
+        bash_command=f"cd {PIPELINE_DIR} && dbt build --profiles-dir {PIPELINE_DIR}",
     )
 
     setup_schema >> load_raw >> seed >> build

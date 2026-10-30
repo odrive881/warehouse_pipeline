@@ -1,10 +1,25 @@
 import os
+import logging
 import pandas as pd
 from sqlalchemy import create_engine, text
-from sqlalchemy import inspect
 import io
 
-csv_path = "/opt/airflow/warehouse_pipeline/data/movements_large.csv"
+logger = logging.getLogger(__name__)
+
+DEFAULT_CSV_PATH = "/opt/airflow/warehouse_pipeline/data/movements_large.csv"
+
+MOVEMENT_COLUMNS = ["event_id", "sku", "warehouse_id", "event_type", "quantity", "event_timestamp"]
+
+RAW_MOVEMENTS_DDL = """
+CREATE TABLE IF NOT EXISTS raw.movements (
+    event_id        BIGINT PRIMARY KEY,
+    sku             TEXT NOT NULL,
+    warehouse_id    TEXT NOT NULL,
+    event_type      TEXT NOT NULL,
+    quantity        INTEGER NOT NULL,
+    event_timestamp TIMESTAMP NOT NULL
+)
+"""
 
 
 def get_engine():
@@ -13,12 +28,19 @@ def get_engine():
         f"@{os.environ['DB_HOST']}:{os.environ['DB_PORT']}/{os.environ['DB_NAME']}"
     )
 
-def ensure_raw_schema():
-    """Makes sure the correct schema exists, if not it creates one"""
-    engine = get_engine()
+
+def get_csv_path():
+    """Batch file location, overridable with MOVEMENTS_CSV_PATH"""
+    return os.environ.get("MOVEMENTS_CSV_PATH", DEFAULT_CSV_PATH)
+
+
+def ensure_raw_schema(engine_func=get_engine):
+    """Makes sure the raw schema and the raw.movements table exist, if not it creates them"""
+    engine = engine_func()
     try:
         with engine.begin() as conn:
             conn.execute(text("CREATE SCHEMA IF NOT EXISTS raw"))
+            conn.execute(text(RAW_MOVEMENTS_DDL))
     finally:
         engine.dispose()
 
@@ -30,16 +52,17 @@ def copy_to_sql(dataframe, cursor_connection, raw_connection):
     """
 
     buffer = io.StringIO()
-    dataframe.to_csv(buffer, index=False, header=True)
+    dataframe[MOVEMENT_COLUMNS].to_csv(buffer, index=False, header=True)
     buffer.seek(0)
 
+    # COPY matches columns by position, not by header name, so the column list is spelled out
     cursor_connection.copy_expert(
-        "COPY raw.movements FROM STDIN WITH (FORMAT CSV, HEADER TRUE)",
+        f"COPY raw.movements ({', '.join(MOVEMENT_COLUMNS)}) FROM STDIN WITH (FORMAT CSV, HEADER TRUE)",
         buffer
     )
 
     raw_connection.commit()
-    print(f"Loaded {len(dataframe)} rows to raw.movements")
+    logger.info("Loaded %d rows to raw.movements", len(dataframe))
 
 
 def read_batch(path):
@@ -84,23 +107,20 @@ def validate_continuity(df, last_id, last_timestamp):
             "Create a new file with newer timestamps")
 
 
-def run_loader(engine_func=get_engine, path=csv_path):
+def run_loader(engine_func=get_engine, path=None):
     """
-    Validates dtypes, sets up the table if needed, and makes sure the new batch has larger ids
-    and later timestamps than anything already loaded, so batches stay chronologically continuous
-    without duplicate data
+    Validates dtypes and makes sure the new batch has larger ids and later timestamps than anything
+    already loaded, so batches stay chronologically continuous without duplicate data.
+    Expects raw.movements to exist (see ensure_raw_schema).
     """
 
+    path = path or get_csv_path()
     engine = engine_func()
     try:
         df = read_batch(path)
+        logger.info("Read %d rows from %s", len(df), path)
 
-        if inspect(engine).has_table("movements", schema='raw'):
-            last_id, last_timestamp = get_last_loaded(engine)
-        else:
-            df.head(0).to_sql(name='movements', con=engine, schema='raw', if_exists='replace', index=False)
-            last_id, last_timestamp = None, None
-
+        last_id, last_timestamp = get_last_loaded(engine)
         validate_continuity(df, last_id, last_timestamp)
 
         raw_conn = engine.raw_connection()

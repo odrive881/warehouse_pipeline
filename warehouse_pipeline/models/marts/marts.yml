@@ -4,9 +4,15 @@ models:
 
   - name: mart_stock_level
     description: >
-      Calculates the quantity of SKUs in stock, and their value
+      Calculates the quantity of each SKU in stock per warehouse, and its value
 
     columns:
+
+      - name: warehouse_id
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['WH-POZNAN', 'WH-WARSZAWA']
 
       - name: sku
         tests:
@@ -81,9 +87,15 @@ models:
 
   - name: mart_reorder_alerts
     description: >
-      Displays any SKUs that have gone below their safety stock threshold.
+      Displays any SKUs that have gone below their safety stock threshold in a given warehouse.
 
     columns:
+
+      - name: warehouse_id
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['WH-POZNAN', 'WH-WARSZAWA']
 
       - name: sku
         tests:

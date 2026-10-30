@@ -1,14 +1,13 @@
 """
 Tests for loader.py. They run against a temporary SQLite database with a "raw" schema attached,
-so no Postgres is needed. COPY is Postgres-only, so copy_to_sql is swapped for a plain to_sql append.
+so no Postgres is needed. raw.movements is created from loader's own DDL. COPY is Postgres-only,
+so copy_to_sql is swapped for a plain to_sql append.
 """
 import pandas as pd
 import pytest
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 
 import loader
-
-COLUMNS = ["event_id", "sku", "warehouse_id", "event_type", "quantity", "event_timestamp"]
 
 
 def write_batch(path, first_id, timestamps):
@@ -16,7 +15,7 @@ def write_batch(path, first_id, timestamps):
         [first_id + i, "SKU-0001", "WH-POZNAN", "receipt", 10, ts]
         for i, ts in enumerate(timestamps)
     ]
-    pd.DataFrame(rows, columns=COLUMNS).to_csv(path, index=False)
+    pd.DataFrame(rows, columns=loader.MOVEMENT_COLUMNS).to_csv(path, index=False)
     return path
 
 
@@ -31,6 +30,9 @@ def engine(tmp_path, monkeypatch):
     def append_to_sql(dataframe, cursor_connection, raw_connection):
         dataframe.to_sql(name="movements", con=eng, schema="raw", if_exists="append", index=False)
 
+    with eng.begin() as conn:
+        conn.execute(text(loader.RAW_MOVEMENTS_DDL))
+
     monkeypatch.setattr(loader, "copy_to_sql", append_to_sql)
     yield eng
     eng.dispose()
@@ -40,12 +42,37 @@ def loaded_ids(engine):
     return pd.read_sql("SELECT event_id FROM raw.movements ORDER BY event_id", engine)["event_id"].tolist()
 
 
-def test_first_load_creates_table_and_loads_rows(engine, tmp_path):
+def test_first_load_into_empty_table(engine, tmp_path):
     batch = write_batch(tmp_path / "batch1.csv", 1, ["2024-01-01 08:00:00", "2024-01-01 09:00:00"])
 
     loader.run_loader(lambda: engine, batch)
 
     assert loaded_ids(engine) == [1, 2]
+
+
+def test_csv_path_comes_from_environment(engine, tmp_path, monkeypatch):
+    batch = write_batch(tmp_path / "from_env.csv", 1, ["2024-01-01 08:00:00"])
+    monkeypatch.setenv("MOVEMENTS_CSV_PATH", str(batch))
+
+    loader.run_loader(lambda: engine)
+
+    assert loaded_ids(engine) == [1]
+
+
+def test_event_id_is_primary_key(engine):
+    assert inspect(engine).get_pk_constraint("movements", schema="raw")["constrained_columns"] == ["event_id"]
+
+
+def test_database_rejects_duplicate_ids_even_without_validation(engine, tmp_path, monkeypatch):
+    batch = write_batch(tmp_path / "batch1.csv", 1, ["2024-01-01 08:00:00"])
+    loader.run_loader(lambda: engine, batch)
+    monkeypatch.setattr(loader, "validate_continuity", lambda *args: None)
+
+    # pandas wraps the driver's IntegrityError, so match on the constraint message
+    with pytest.raises(Exception, match="UNIQUE constraint failed"):
+        loader.run_loader(lambda: engine, batch)
+
+    assert loaded_ids(engine) == [1]
 
 
 def test_newer_batch_is_appended(engine, tmp_path):
